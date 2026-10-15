@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>极简 CSV 展示页</title>
+  <style>
+    /* 非常简陋的样式，只保证可读 */
+    body {
+      font-family: monospace;
+      background: #fafafa;
+      margin: 2rem;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+    }
+    .container {
+      max-width: 100%;
+      overflow-x: auto;
+      background: white;
+      border: 1px solid #ccc;
+      padding: 1rem;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    table {
+      border-collapse: collapse;
+      font-size: 14px;
+      white-space: nowrap;
+    }
+    th, td {
+      border: 1px solid #aaa;
+      padding: 6px 10px;
+      text-align: left;
+      background-color: #fff;
+    }
+    th {
+      background-color: #eee;
+      font-weight: 600;
+    }
+    .error {
+      color: red;
+      background: #ffe0e0;
+      padding: 1rem;
+      border: 1px solid red;
+    }
+  </style>
+</head>
+<body>
+  <div class="container" id="app">
+    <!-- 表格或提示会通过JS插入到这里 -->
+    <div>正在加载 CSV...</div>
+  </div>
+
+  <script>
+    (function() {
+      // ============================================================
+      // 配置区域：只需要修改这里的数据文件路径 (相对于当前 HTML 文件)
+      // 如果你把 CSV 文件放在同一仓库的根目录，直接写文件名即可
+      // 例如: 'data.csv' 或 './data.csv'
+      // 如果文件在子目录，写 'folder/data.csv'
+      // 推荐使用仓库内的相对路径，并且通过 GitHub Pages 访问。
+      // ============================================================
+      const CSV_FILE_PATH = 'avenya.csv';   // ← 改成你的 CSV 文件名
+      // ============================================================
+
+      const app = document.getElementById('app');
+
+      // 非常简陋的 CSV 解析函数 —— 只支持最简单的逗号分隔，没有引号处理
+      // 但足够展示纯文本数字、英文等简单内容
+      function parseSimpleCSV(text) {
+        const lines = text.trim().split(/\r?\n/);
+        return lines.map(line => line.split(','));
+      }
+
+      // 渲染表格
+      function renderTable(rows) {
+        if (!rows || rows.length === 0) {
+          app.innerHTML = '<div class="error">CSV 文件没有内容或为空</div>';
+          return;
+        }
+
+        // 使用第一行作为表头，其余作为数据行
+        const headers = rows[0];
+        const dataRows = rows.slice(1);
+
+        // 构建 table 的 HTML
+        let tableHtml = '<table>\n<thead>\n<tr>';
+        headers.forEach(h => {
+          // 去掉可能存在的 BOM 和多余空格，简单清理
+          const cleanHeader = (h || '').replace(/^\uFEFF/, '').trim();
+          tableHtml += `<th>${escapeHtml(cleanHeader)}</th>`;
+        });
+        tableHtml += '</tr>\n</thead>\n<tbody>\n';
+
+        dataRows.forEach(row => {
+          tableHtml += '<tr>';
+          // 对每一列：如果该行缺少值，用空字符串填充
+          for (let i = 0; i < headers.length; i++) {
+            const cellValue = row[i] !== undefined ? row[i] : '';
+            tableHtml += `<td>${escapeHtml(cellValue)}</td>`;
+          }
+          // 如果该行有多余的列？为了简单，忽略或者可以添加额外列？为了整洁我们只渲染与表头相同数量的列，但为了显示全，也可以添加额外的列
+          // 这里为了“简陋但能看全”，如果列数超出表头，就把多出的列附加显示（但表头会不齐，我们选择忽略多余列？还是让表格变形？)
+          // 更简单: 如果列数比表头多，就把多出的数据拼接到最后一个单元格？但那样太乱。干脆额外加列不定义表头？但表格会错位。
+          // 既然非常简陋，就只显示与表头列数一致的数据，多余的省略，以免错乱。但为了不丢失数据，提示一下？不提示。
+          // 优化：如果某行列数大于表头，我们动态补充表头？但会破坏结构。反正只是展示，假设CSV格式规整。
+          // 为了安全，如果行列数大于表头，就用空单元格补到最大列数？但表头只有那么多，会多出空列，显示很奇怪。
+          // 简化：只渲染表头长度，其余忽略。这符合“非常简陋”，并且避免界面错乱。
+          // 但如果某行有超出的列，我们可以在该行末尾添加额外单元格（但表头没有对应，会出现空白表头效果）。为了尽量完整显示，我们选择：
+          // 如果该行列数大于表头，则在该行补上额外的 <td>，但表头没有对应，所以浏览器会生成额外列（空的 th 位置）—— 其实也可以，就是表头会缺块。
+          // 我决定忽略多余列，保持整洁。毕竟场景是展示规整的CSV。
+          // 更稳健的做法是使用 maxCols，但我不再增加复杂度。
+          tableHtml += '</tr>\n';
+        });
+
+        tableHtml += '</tbody>\n</table>';
+        app.innerHTML = tableHtml;
+      }
+
+      // 简单的转义，防止 XSS（虽然只是展示，但养成习惯）
+      function escapeHtml(unsafe) {
+        if (unsafe === undefined || unsafe === null) return '';
+        return String(unsafe)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      // 获取 CSV 文件并显示
+      fetch(CSV_FILE_PATH)
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status} - 无法加载 ${CSV_FILE_PATH}`);
+          }
+          return response.text();
+        })
+        .then(csvText => {
+          // 移除可能存在的 UTF-8 BOM
+          const cleanText = csvText.replace(/^\uFEFF/, '');
+          const rows = parseSimpleCSV(cleanText);
+          renderTable(rows);
+        })
+        .catch(error => {
+          app.innerHTML = `<div class="error">
+            <strong>加载 CSV 失败:</strong><br>
+            ${escapeHtml(error.message)}<br><br>
+            请确保:<br>
+            1. 文件 <code>${escapeHtml(CSV_FILE_PATH)}</code> 已放在正确位置<br>
+            2. 通过 HTTP 访问（GitHub Pages 或本地服务器）<br>
+            3. 文件名拼写正确
+          </div>`;
+        });
+    })();
+  </script>
+</body>
+</html>
